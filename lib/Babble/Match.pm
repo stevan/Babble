@@ -1,12 +1,18 @@
 package Babble::Match;
 
 use PPR::X;
+use Babble::SymbolGenerator;
 use Mu;
 use re 'eval';
 
 ro 'top_rule';
 rwp 'text';
 lazy 'grammar_regexp' => sub { $PPR::X::GRAMMAR };
+lazy 'symbol_generator' => sub {
+  $_[0]->can('parent')
+    ? $_[0]->parent->symbol_generator
+    : Babble::SymbolGenerator->new
+  } => handles => [ 'gensym' ];
 
 lazy top_re => sub {
   my ($self) = @_;
@@ -39,7 +45,7 @@ lazy submatches => sub {
     next unless defined $values[$idx];
     my ($name, $rule) = @{$subrules[$idx]};
     $submatches{$name} = Babble::SubMatch->new(
-      top_rule => $rule,
+      top_rule => [ $rule ],
       start => $-[$idx+1],
       text => $values[$idx],
       parent => $self,
@@ -47,6 +53,15 @@ lazy submatches => sub {
   }
   return \%submatches;
 };
+
+sub subtexts {
+  my ($self, @names) = @_;
+  unless (@names) {
+    my %s = %{$self->submatches};
+    return +{ map +( $_ => $s{$_}->text ), keys %s };
+  }
+  map $_->text, @{$self->submatches}{@names};
+}
 
 sub _rule_to_re {
   my $re = $_[1];
@@ -82,7 +97,7 @@ sub each_match_of {
   while (my $f = shift @found) {
     my $match = substr($self->text, $f->[0], $f->[1]);
     my $obj = Babble::SubMatch->new(
-                top_rule => $self->_rule_to_re($of),
+                top_rule => $of,
                 start => $f->[0],
                 text => $match,
                 parent => $self,
